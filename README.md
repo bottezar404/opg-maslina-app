@@ -13,8 +13,9 @@ Web aplikacija za vođenje maslinarskog OPG-a: **berba, prerada, skladište, pro
 | 📊 **Pregled** | Ubrano (kg), proizvedeno ulja (L), prosječni randman, zaliha, prodaja, neplaćeno, troškovi i dobit — po godini |
 | 🧺 **Berba** | Datum, maslinik, kg, broj berača, sati rada |
 | ⚙️ **Prerada** | Uljara, kg maslina → litre ulja, automatski randman, trošak prerade, spremnik |
-| 🛢️ **Skladište** | Spremnici s kapacitetom; stanje = prerada − prodaja (automatski) |
+| 🛢️ **Skladište** | Spremnici s kapacitetom; stanje = prerada − prodaja − pokloni (automatski) |
 | 💶 **Prodaja** | Kupac, spremnik, pakiranje, litre, cijena, plaćeno/neplaćeno |
+| 🎁 **Pokloni** | Ulje dano kao poklon ili donacija: kome, prilika, spremnik, litre (umanjuje zalihu, ne ulazi u prihod) |
 | 🧾 **Troškovi** | Gnojivo, zaštita, berači, gorivo, ambalaža… |
 | 👥 **Kupci** / 🌳 **Maslinici** | Maslinici sa sortom i brojem stabala → kg po stablu |
 
