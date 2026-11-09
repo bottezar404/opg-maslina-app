@@ -56,6 +56,10 @@ U datoteci [`public/config.js`](public/config.js) upišite URL i *anon* ključ (
 
 ---
 
+## Nadogradnja baze
+
+Kad nova verzija aplikacije donese promjene u bazi, ponovo pokrenite cijelu datoteku [`supabase/schema.sql`](supabase/schema.sql) u SQL Editoru. To je sigurno: postojeći podaci ostaju netaknuti.
+
 ## Pokretanje na vlastitom računalu (za razvoj)
 
 Nije potreban build — dovoljno je posluživati mapu `public`:

@@ -59,3 +59,7 @@ dialog::backdrop{background:rgba(0,0,0,.4)}#dialog-form{padding:1.2em}
   .card table td::before{flex-shrink:0}
 }
 .hint{display:block;margin-top:.3em;color:var(--olive-d)}
+.setting{display:flex;flex-wrap:wrap;align-items:flex-end;gap:.4em 1em;margin:.4em 0 .8em}
+.setting label{margin:0;flex:0 1 240px}.setting small{flex-basis:100%}
+.warn-box{border-color:#e9c4c1;background:#fdf3f2}
+tbody tr.static{cursor:default}

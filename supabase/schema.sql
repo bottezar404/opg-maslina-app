@@ -68,6 +68,13 @@ create table if not exists public.expenses (
   created_at timestamptz default now()
 );
 
+-- Postavke OPG-a (npr. cijena prerade po kg maslina)
+create table if not exists public.settings (
+  key text primary key,
+  value text,
+  updated_at timestamptz default now()
+);
+
 -- Nadogradnja: količina ulja u kg (litre se računaju iz kg)
 alter table public.millings add column if not exists kg_oil numeric check (kg_oil >= 0);
 
@@ -75,7 +82,7 @@ alter table public.millings add column if not exists kg_oil numeric check (kg_oi
 do $$
 declare t text;
 begin
-  foreach t in array array['groves','tanks','customers','harvests','millings','sales','expenses'] loop
+  foreach t in array array['groves','tanks','customers','harvests','millings','sales','expenses','settings'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "clanovi" on public.%I', t);
     execute format('create policy "clanovi" on public.%I for all to authenticated using (public.is_member()) with check (public.is_member())', t);
