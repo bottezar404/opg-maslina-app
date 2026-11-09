@@ -224,6 +224,12 @@ async function startApp() {
   }
   state.members = me;
   await refreshYears();
+  if (state.recovery) {
+    // Došli smo preko linka iz e-maila za oporavak lozinke
+    state.recovery = false;
+    history.replaceState(null, '', location.pathname + '#settings');
+    setTimeout(() => toast('Upišite novu lozinku'), 300);
+  }
   route();
 }
 async function logout() { await sb.auth.signOut(); state.user = null; showLogin(); }
@@ -426,5 +432,8 @@ if (!configured) {
     if (data.session) { state.user = data.session.user; startApp().catch(e => toast(e.message, true)); }
     else showLogin();
   });
-  sb.auth.onAuthStateChange((event) => { if (event === 'SIGNED_OUT') showLogin(); });
+  sb.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') showLogin();
+    if (event === 'PASSWORD_RECOVERY') state.recovery = true;
+  });
 }
