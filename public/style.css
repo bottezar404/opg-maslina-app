@@ -63,3 +63,4 @@ dialog::backdrop{background:rgba(0,0,0,.4)}#dialog-form{padding:1.2em}
 .setting label{margin:0;flex:0 1 240px}.setting small{flex-basis:100%}
 .warn-box{border-color:#e9c4c1;background:#fdf3f2}
 tbody tr.static{cursor:default}
+.card.wide{margin-top:1em}
