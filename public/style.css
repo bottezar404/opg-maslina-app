@@ -58,3 +58,4 @@ dialog::backdrop{background:rgba(0,0,0,.4)}#dialog-form{padding:1.2em}
   td::before{content:attr(data-label);color:var(--muted);font-size:.85em}
   .card table td::before{flex-shrink:0}
 }
+.hint{display:block;margin-top:.3em;color:var(--olive-d)}

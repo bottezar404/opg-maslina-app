@@ -29,7 +29,10 @@ const db = {
     let q = sb.from(table).select('*');
     if (ORDER[table]) q = q.order(...[ORDER[table][0], { ascending: true }]);
     else q = yearRange(q, year).order('date', { ascending: false }).order('id', { ascending: false });
-    return ok(await q);
+    const rows = ok(await q);
+    // Stari unosi prerade imaju samo litre: izračunaj kg
+    if (table === 'millings') rows.forEach(r => { if (r.kg_oil == null) r.kg_oil = Math.round(r.liters_oil * OIL_DENSITY * 100) / 100; });
+    return rows;
   },
   async insert(table, row) { return ok(await sb.from(table).insert(row)); },
   async update(table, id, row) { return ok(await sb.from(table).update(row).eq('id', id)); },
@@ -58,13 +61,13 @@ const db = {
       const g = groves.find(x => x.id === gid);
       return { name: g?.name || '(bez maslinika)', kg, trees: g?.trees };
     }).sort((a, b) => b.kg - a.kg);
-    const milling = { kg: sum(m, 'kg_olives'), l: sum(m, 'liters_oil'), cost: sum(m, 'cost') };
+    const milling = { kg: sum(m, 'kg_olives'), kgOil: sum(m, 'kg_oil'), l: sum(m, 'liters_oil'), cost: sum(m, 'cost') };
     const expenses = { total: sum(e, 'amount') };
     return {
       harvest: { kg: sum(h, 'kg'), n: h.length }, milling, expenses, byGrove,
       sales: { l: sum(s, 'liters'), total: salesTotal, unpaid: s.filter(r => !r.paid).reduce((a, r) => a + r.liters * r.price_per_l, 0) },
       stock: sum(mAll, 'liters_oil') - sum(sAll, 'liters'),
-      yieldPct: milling.kg > 0 ? milling.l / milling.kg * 100 : null,
+      yieldPct: milling.kg > 0 ? milling.kgOil / milling.kg * 100 : null,
       profit: salesTotal - expenses.total - milling.cost,
     };
   },
@@ -98,15 +101,17 @@ const MODULES = {
       date: { label: 'Datum', type: 'date', required: true, default: today },
       mill: { label: 'Uljara', type: 'text' },
       kg_olives: { label: 'Masline (kg)', type: 'number', required: true },
-      liters_oil: { label: 'Dobiveno ulje (L)', type: 'number', required: true },
+      kg_oil: { label: 'Dobiveno ulje (kg)', type: 'number', required: true,
+        hint: v => v > 0 ? `= <b>${nf(kgToL(v), 1)} L</b> ulja (gustoća ${nf(OIL_DENSITY, 3)} kg/L)` : `Litre se izračunaju automatski (1 L ≈ ${nf(OIL_DENSITY, 3)} kg)` },
       cost: { label: 'Trošak prerade (€)', type: 'number' },
       tank_id: { label: 'Spremnik', ...opt('tanks') },
       notes: { label: 'Bilješke', type: 'textarea' },
     },
-    columns: ['date', 'mill', 'kg_olives', 'liters_oil', 'yield', 'cost', 'tank_id'],
-    virtual: { yield: { label: 'Randman', fmt: r => r.kg_olives ? nf(r.liters_oil / r.kg_olives * 100, 1) + ' %' : '' } },
+    columns: ['date', 'mill', 'kg_olives', 'kg_oil', 'liters', 'yield', 'cost', 'tank_id'],
+    beforeSave: d => { d.liters_oil = Math.round(kgToL(d.kg_oil) * 100) / 100; },
+    virtual: { liters: { label: 'Ulje (L)', fmt: r => nf(r.liters_oil, 1) }, yield: { label: 'Randman', fmt: r => r.kg_olives ? nf(r.kg_oil / r.kg_olives * 100, 1) + ' %' : '' } },
     total: rows => { const kg = sum(rows, 'kg_olives'), l = sum(rows, 'liters_oil');
-      return `Ukupno: <b>${nf(kg)} kg</b> → <b>${nf(l, 1)} L</b> ulja${kg ? ` · prosječni randman <b>${nf(l / kg * 100, 1)} %</b>` : ''}`; },
+      return `Ukupno: <b>${nf(kg)} kg</b> maslina → <b>${nf(sum(rows, 'kg_oil'), 1)} kg</b> = <b>${nf(l, 1)} L</b> ulja${kg ? ` · prosječni randman <b>${nf(sum(rows, 'kg_oil') / kg * 100, 1)} %</b>` : ''}`; },
   },
   sales: {
     title: 'Prodaja', icon: '💶', singular: 'prodaju',
@@ -177,6 +182,9 @@ const MODULES = {
     columns: ['name', 'location', 'variety', 'trees', 'area_ha'],
   },
 };
+// Gustoća maslinovog ulja (kg po litri) pri ~20 °C
+const OIL_DENSITY = 0.916;
+const kgToL = kg => Number(kg) / OIL_DENSITY;
 const sum = (rows, k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
 
 const NAV = [
@@ -261,7 +269,7 @@ async function renderDashboard() {
     <div class="tiles">
       ${tile('Ubrano maslina', nf(s.harvest.kg) + ' kg', s.harvest.n + ' unosa berbe')}
       ${tile('Proizvedeno ulja', nf(s.milling.l, 1) + ' L', 'od ' + nf(s.milling.kg) + ' kg maslina')}
-      ${tile('Prosječni randman', s.yieldPct == null ? '–' : nf(s.yieldPct, 1) + ' %', 'litara ulja na 100 kg')}
+      ${tile('Prosječni randman', s.yieldPct == null ? '–' : nf(s.yieldPct, 1) + ' %', 'kg ulja na 100 kg maslina')}
       ${tile('Na zalihi', nf(s.stock, 1) + ' L', 'trenutno stanje, svi spremnici')}
       ${tile('Prodano', nf(s.sales.l, 1) + ' L', eur(s.sales.total))}
       ${tile('Neplaćeno', eur(s.sales.unpaid), 'potraživanja od kupaca')}
@@ -345,19 +353,25 @@ function inputFor(name, f, value) {
   const dl = f.list ? `<datalist id="dl-${name}">${f.list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>` : '';
   const num = f.type === 'number' ? `inputmode="${f.step === 1 ? 'numeric' : 'decimal'}" pattern="[0-9]*[.,]?[0-9]*"` : '';
   const type = f.type === 'number' ? 'text' : f.type;
-  return `<input type="${type}" name="${name}" value="${esc(v)}" ${req} ${num} ${list} placeholder="${esc(f.placeholder || '')}">${dl}`;
+  const shown = f.type === 'number' && v !== '' && v != null ? String(v).replace('.', ',') : v;
+  return `<input type="${type}" name="${name}" value="${esc(shown)}" ${req} ${num} ${list} placeholder="${esc(f.placeholder || '')}">${dl}`;
 }
 
 function openForm(id, row) {
   const mod = MODULES[id];
   const dlg = $('#dialog'), form = $('#dialog-form');
   form.innerHTML = `<h3>${row ? 'Uredi' : 'Dodaj'} ${mod.singular}</h3>
-    ${Object.entries(mod.fields).map(([k, f]) => `<label class="${f.type === 'checkbox' ? 'check' : ''}">${f.label}${f.required ? ' *' : ''}${inputFor(k, f, row?.[k])}</label>`).join('')}
+    ${Object.entries(mod.fields).map(([k, f]) => `<label class="${f.type === 'checkbox' ? 'check' : ''}">${f.label}${f.required ? ' *' : ''}${inputFor(k, f, row?.[k])}${f.hint ? `<small class="hint" data-hint="${k}"></small>` : ''}</label>`).join('')}
     <div class="actions">
       ${row ? '<button type="button" class="btn danger" id="del">Obriši</button>' : '<span></span>'}
       <div><button type="button" class="btn" id="cancel">Odustani</button> <button class="btn primary" value="save">Spremi</button></div>
     </div>`;
   form.querySelector('#cancel').onclick = () => dlg.close();
+  const updateHints = () => form.querySelectorAll('[data-hint]').forEach(h => {
+    const v = Number(form.elements[h.dataset.hint].value.replace(/\s/g, '').replace(',', '.'));
+    h.innerHTML = mod.fields[h.dataset.hint].hint(Number.isFinite(v) ? v : 0);
+  });
+  form.oninput = updateHints; updateHints();
   if (row) form.querySelector('#del').onclick = async () => {
     if (!confirm('Sigurno obrisati ovaj unos?')) return;
     try { await db.remove(id, row.id); dlg.close(); toast('Obrisano'); route(); } catch (e) { toast(e.message, true); }
@@ -378,6 +392,7 @@ function openForm(id, row) {
         if (f.required && v == null) throw new Error(`"${f.label}" je obavezno polje`);
         data[k] = v;
       }
+      mod.beforeSave?.(data);
       if (row) await db.update(id, row.id, data); else await db.insert(id, data);
       dlg.close(); toast('Spremljeno'); refreshYears(); route();
     } catch (err) { toast(err.message, true); }
