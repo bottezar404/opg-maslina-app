@@ -94,10 +94,16 @@ const db = {
       const g = groves.find(x => x.id === gid);
       return { name: g?.name || '(bez maslinika)', kg, trees: g?.trees };
     }).sort((a, b) => b.kg - a.kg);
+    // Po sortama: ubrano, prerađeno, ulje
+    const vmap = new Map();
+    const vrow = v => { v = v || 'bez sorte'; if (!vmap.has(v)) vmap.set(v, { name: v, harvested: 0, milled: 0, kgOil: 0, l: 0 }); return vmap.get(v); };
+    h.forEach(r => { vrow(r.variety || groves.find(g => g.id === r.grove_id)?.variety).harvested += Number(r.kg) || 0; });
+    m.forEach(r => { const x = vrow(r.variety); x.milled += Number(r.kg_olives) || 0; x.kgOil += Number(r.kg_oil) || 0; x.l += Number(r.liters_oil) || 0; });
+    const byVarietyRows = [...vmap.values()].sort((a, b) => b.harvested + b.milled - a.harvested - a.milled);
     const milling = { kg: sum(m, 'kg_olives'), kgOil: sum(m, 'kg_oil'), l: sum(m, 'liters_oil'), cost: sum(m, 'cost') };
     const expenses = { total: sum(e, 'amount') };
     return {
-      harvest: { kg: sum(h, 'kg'), n: h.length }, milling, expenses, byGrove,
+      harvest: { kg: sum(h, 'kg'), n: h.length }, milling, expenses, byGrove, byVarietyRows,
       gifts: { l: sum(g, 'liters'), n: g.length },
       sales: { l: sum(s, 'liters'), total: salesTotal, unpaid: s.filter(r => !r.paid).reduce((a, r) => a + r.liters * r.price_per_l, 0) },
       stock: sum(stock, 'current'), stockRows: stock,
@@ -115,6 +121,10 @@ function toast(msg, err) {
 }
 
 // ---------- Definicije modula ----------
+const VARIETIES = ['Oblica', 'Levantinka', 'Lastovka', 'Buža', 'Istarska bjelica', 'Rosinjola', 'Leccino', 'Pendolino', 'Drobnica', 'Mješavina'];
+// Popis sorti: standardne + one upisane kod maslinika
+const varietyList = () => [...new Set([...(state.cache.groves || []).map(g => g.variety).filter(Boolean), ...VARIETIES])];
+const groveVariety = id => (state.cache.groves || []).find(g => g.id === id)?.variety || '';
 const opt = (res, display = 'name') => ({ type: 'select', source: res, display });
 const MODULES = {
   harvests: {
@@ -122,18 +132,27 @@ const MODULES = {
     fields: {
       date: { label: 'Datum', type: 'date', required: true, default: today },
       grove_id: { label: 'Maslinik', ...opt('groves') },
+      variety: { label: 'Sorta', type: 'text', list: varietyList, placeholder: 'npr. Oblica',
+        hint: () => 'Upiše se automatski prema masliniku (može se promijeniti)' },
       kg: { label: 'Količina (kg)', type: 'number', required: true },
       workers: { label: 'Broj berača', type: 'number', step: 1 },
       hours: { label: 'Sati rada', type: 'number' },
       notes: { label: 'Bilješke', type: 'textarea' },
     },
-    columns: ['date', 'grove_id', 'kg', 'workers', 'hours', 'notes'],
-    total: rows => `Ukupno: <b>${nf(sum(rows, 'kg'))} kg</b> u ${rows.length} unosa`,
+    columns: ['date', 'grove_id', 'variety', 'kg', 'workers', 'hours', 'notes'],
+    // Sorta se popuni iz odabranog maslinika, dok je korisnik sam ne promijeni
+    onInput: (form, target) => {
+      if (target?.name === 'variety') form.dataset.varietyManual = '1';
+      if (target?.name === 'grove_id' && !form.dataset.varietyManual) form.elements.variety.value = groveVariety(Number(target.value));
+    },
+    total: rows => `Ukupno: <b>${nf(sum(rows, 'kg'))} kg</b> u ${rows.length} unosa` + byVariety(rows, 'kg', v => nf(v) + ' kg'),
   },
   millings: {
     title: 'Prerada', icon: '⚙️', singular: 'preradu',
+    extraRefs: ['groves'], // za popis sorti
     fields: {
       date: { label: 'Datum', type: 'date', required: true, default: today },
+      variety: { label: 'Sorta', type: 'text', list: varietyList, placeholder: 'npr. Oblica ili Mješavina' },
       mill: { label: 'Uljara', type: 'text' },
       kg_olives: { label: 'Masline (kg)', type: 'number', required: true },
       kg_oil: { label: 'Dobiveno ulje (kg)', type: 'number', required: true,
@@ -143,7 +162,7 @@ const MODULES = {
       tank_id: { label: 'Spremnik', ...opt('tanks') },
       notes: { label: 'Bilješke', type: 'textarea' },
     },
-    columns: ['date', 'mill', 'kg_olives', 'kg_oil', 'liters', 'yield', 'cost', 'tank_id'],
+    columns: ['date', 'variety', 'mill', 'kg_olives', 'kg_oil', 'liters', 'yield', 'cost', 'tank_id'],
     beforeSave: d => { d.liters_oil = Math.round(kgToL(d.kg_oil) * 100) / 100; },
     // Trošak = kg maslina × cijena, dok ga korisnik sam ne promijeni
     onInput: (form, target) => {
@@ -174,7 +193,7 @@ const MODULES = {
     },
     virtual: { liters: { label: 'Ulje (L)', fmt: r => `<b>${lit(r.liters_oil)}</b>` }, yield: { label: 'Randman (kg)', fmt: r => r.kg_olives ? nf(r.kg_oil / r.kg_olives * 100, 1) + ' %' : '' } },
     total: rows => { const kg = sum(rows, 'kg_olives'), l = sum(rows, 'liters_oil');
-      return `Ukupno: <b>${nf(kg)} kg</b> maslina → <b>${lit(l)} L</b> ulja (${nf(sum(rows, 'kg_oil'), 1)} kg)${kg ? ` · <b>${nf(l / kg * 100, 1)} L</b> na 100 kg maslina · randman ${nf(sum(rows, 'kg_oil') / kg * 100, 1)} %` : ''} · trošak prerade <b>${eur(sum(rows, 'cost'))}</b>`; },
+      return `Ukupno: <b>${nf(kg)} kg</b> maslina → <b>${lit(l)} L</b> ulja (${nf(sum(rows, 'kg_oil'), 1)} kg)${kg ? ` · <b>${nf(l / kg * 100, 1)} L</b> na 100 kg maslina · randman ${nf(sum(rows, 'kg_oil') / kg * 100, 1)} %` : ''} · trošak prerade <b>${eur(sum(rows, 'cost'))}</b>` + byVariety(rows, 'liters_oil', v => lit(v) + ' L'); },
   },
   sales: {
     title: 'Prodaja', icon: '💶', singular: 'prodaju',
@@ -254,7 +273,7 @@ const MODULES = {
       location: { label: 'Lokacija / katastarska čestica', type: 'text' },
       area_ha: { label: 'Površina (ha)', type: 'number' },
       trees: { label: 'Broj stabala', type: 'number', step: 1 },
-      variety: { label: 'Sorta', type: 'text', list: ['Oblica', 'Levantinka', 'Lastovka', 'Buža', 'Istarska bjelica', 'Rosinjola', 'Leccino', 'Pendolino', 'Drobnica'] },
+      variety: { label: 'Sorta', type: 'text', list: VARIETIES },
       notes: { label: 'Bilješke', type: 'textarea' },
     },
     columns: ['name', 'location', 'variety', 'trees', 'area_ha'],
@@ -263,6 +282,13 @@ const MODULES = {
 // Gustoća maslinovog ulja (kg po litri) pri ~20 °C
 const OIL_DENSITY = 0.916;
 const kgToL = kg => Number(kg) / OIL_DENSITY;
+// Zbroj po sortama za sažetak na vrhu popisa, npr. "Oblica 800 kg · Levantinka 400 kg"
+function byVariety(rows, key, fmt) {
+  const m = new Map();
+  rows.forEach(r => { const v = r.variety || (r.grove_id ? groveVariety(r.grove_id) : '') || 'bez sorte'; m.set(v, (m.get(v) || 0) + (Number(r[key]) || 0)); });
+  if (m.size < 2 && m.has('bez sorte')) return '';
+  return '<br><small>Po sortama: ' + [...m].sort((a, b) => b[1] - a[1]).map(([v, x]) => `${esc(v)} <b>${fmt(x)}</b>`).join(' · ') + '</small>';
+}
 const sum = (rows, k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
 
 const NAV = [
@@ -358,7 +384,7 @@ async function renderDashboard() {
     <div class="grid2">
       <div class="card"><h3>Berba po maslinicima</h3>
         ${s.byGrove.length ? `<table><thead><tr><th>Maslinik</th><th class="r">kg</th><th class="r">kg/stablu</th></tr></thead><tbody>
-        ${s.byGrove.map(g => `<tr><td>${esc(g.name)}</td><td class="r">${nf(g.kg)}</td><td class="r">${g.trees ? nf(g.kg / g.trees, 1) : '–'}</td></tr>`).join('')}
+        ${s.byGrove.map(g => `<tr class="static"><td data-label="Maslinik"><b>${esc(g.name)}</b></td><td data-label="kg" class="r">${nf(g.kg)}</td><td data-label="kg/stablu" class="r">${g.trees ? nf(g.kg / g.trees, 1) : '–'}</td></tr>`).join('')}
         </tbody></table>` : '<p class="muted">Nema podataka o berbi.</p>'}
       </div>
       <div class="card"><h3>Stanje spremnika</h3>
@@ -367,6 +393,13 @@ async function renderDashboard() {
           ${t.capacity_l ? `<div class="bar"><i style="width:${Math.min(100, Math.max(0, t.current / t.capacity_l * 100))}%"></i></div>` : ''}</div>`).join('')
         : '<p class="muted">Dodajte spremnike u modulu Skladište.</p>'}
       </div>
+    </div>
+    <div class="card wide"><h3>Po sortama</h3>
+      ${s.byVarietyRows.length ? `<div class="table-wrap"><table><thead><tr><th>Sorta</th><th class="r">Ubrano (kg)</th><th class="r">U preradi (kg)</th><th class="r">Ulje (L)</th><th class="r">Randman (kg)</th></tr></thead><tbody>
+      ${s.byVarietyRows.map(v => `<tr class="static"><td data-label="Sorta"><b>${esc(v.name)}</b></td><td data-label="Ubrano (kg)" class="r">${nf(v.harvested)}</td>
+        <td data-label="U preradi (kg)" class="r">${nf(v.milled)}</td><td data-label="Ulje (L)" class="r">${lit(v.l)}</td>
+        <td data-label="Randman (kg)" class="r">${v.milled ? nf(v.kgOil / v.milled * 100, 1) + ' %' : '–'}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">Nema podataka o berbi ni preradi.</p>'}
     </div>
     <div class="quick">
       <a class="btn primary" href="#harvests" data-new>+ Nova berba</a>
@@ -379,7 +412,7 @@ async function renderDashboard() {
 
 // ---------- Generički moduli ----------
 async function loadRefs(mod) {
-  const sources = [...new Set(Object.values(mod.fields).filter(f => f.source).map(f => f.source))];
+  const sources = [...new Set([...Object.values(mod.fields).filter(f => f.source).map(f => f.source), ...(mod.extraRefs || [])])];
   await Promise.all(sources.map(async s => { state.cache[s] = await db.list(s); }));
 }
 
@@ -390,6 +423,7 @@ function cell(mod, key, row) {
   if (f.type === 'date') return fdate(v);
   if (f.type === 'checkbox') return v ? '<span class="ok">✔</span>' : '<span class="warn">✘</span>';
   if (key === 'liters') return lit(v);
+  if (key === 'variety' && !v && row.grove_id) return `<span class="muted">${esc(groveVariety(row.grove_id))}</span>`;
   if (f.type === 'number') return nf(v, f.step === 1 ? 0 : (Number.isInteger(v) ? 0 : 2));
   return esc(v);
 }
@@ -436,7 +470,7 @@ function inputFor(name, f, value) {
   if (f.type === 'textarea') return `<textarea name="${name}" rows="2">${esc(v)}</textarea>`;
   if (f.type === 'checkbox') return `<input type="checkbox" name="${name}" ${value ? 'checked' : ''}>`;
   const list = f.list ? `list="dl-${name}"` : '';
-  const dl = f.list ? `<datalist id="dl-${name}">${f.list.map(x => `<option value="${esc(x)}">`).join('')}</datalist>` : '';
+  const dl = f.list ? `<datalist id="dl-${name}">${(typeof f.list === 'function' ? f.list() : f.list).map(x => `<option value="${esc(x)}">`).join('')}</datalist>` : '';
   const num = f.type === 'number' ? `inputmode="${f.step === 1 ? 'numeric' : 'decimal'}" pattern="[0-9 .,]*"` : '';
   const type = f.type === 'number' ? 'text' : f.type;
   const shown = f.type === 'number' ? fmtInput(v) : v;
@@ -457,7 +491,7 @@ function openForm(id, row) {
     const v = parseNum(form.elements[h.dataset.hint].value);
     h.innerHTML = mod.fields[h.dataset.hint].hint(Number.isFinite(v) ? v : 0);
   });
-  delete form.dataset.costManual;
+  delete form.dataset.costManual; delete form.dataset.varietyManual;
   form.oninput = e => { mod.onInput?.(form, e.target); updateHints(); };
   updateHints();
   if (row) form.querySelector('#del').onclick = async () => {

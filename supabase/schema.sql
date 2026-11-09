@@ -87,6 +87,10 @@ create table if not exists public.settings (
 -- Nadogradnja: količina ulja u kg (litre se računaju iz kg)
 alter table public.millings add column if not exists kg_oil numeric check (kg_oil >= 0);
 
+-- Nadogradnja: sorta kod berbe i prerade
+alter table public.harvests add column if not exists variety text;
+alter table public.millings add column if not exists variety text;
+
 -- Zaštita na razini redaka (RLS): bez prijave i članstva nema pristupa ničemu.
 do $$
 declare t text;
