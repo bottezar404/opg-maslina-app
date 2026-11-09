@@ -505,9 +505,11 @@ async function renderSettings() {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => {});
   // Kad se instalira nova verzija aplikacije, automatski osvježi stranicu
+  // (ne pri prvom otvaranju i ne dok je otvoren obrazac, da se ne izgubi unos)
+  const hadController = !!navigator.serviceWorker.controller;
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloaded || !navigator.serviceWorker.controller) return;
+    if (reloaded || !hadController || $('#dialog').open) return;
     reloaded = true; location.reload();
   });
 }
