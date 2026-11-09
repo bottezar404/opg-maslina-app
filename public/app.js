@@ -62,27 +62,30 @@ const db = {
   async update(table, id, row) { return ok(await sb.from(table).update(row).eq('id', id)); },
   async remove(table, id) { return ok(await sb.from(table).delete().eq('id', id)); },
   async stock() {
-    const [tanks, mills, sales] = await Promise.all([
+    const [tanks, mills, sales, gifts] = await Promise.all([
       db.list('tanks'), fetchAll(() => sb.from('millings').select('tank_id, liters_oil').order('id')),
-      fetchAll(() => sb.from('sales').select('tank_id, liters').order('id'))]);
+      fetchAll(() => sb.from('sales').select('tank_id, liters').order('id')),
+      fetchAll(() => sb.from('gifts').select('tank_id, liters').order('id'))]);
     const row = (t, id) => {
       const produced = sum(mills.filter(m => m.tank_id === id), 'liters_oil');
       const sold = sum(sales.filter(s => s.tank_id === id), 'liters');
-      return { ...t, produced, sold, current: produced - sold };
+      const gifted = sum(gifts.filter(g => g.tank_id === id), 'liters');
+      return { ...t, produced, sold, gifted, current: produced - sold - gifted };
     };
     const out = tanks.map(t => row(t, t.id));
     // Ulje iz prerade / prodaje kojoj nije odabran spremnik
     const none = row({ id: null, name: '(bez spremnika)' }, null);
-    if (none.produced || none.sold) out.push(none);
+    if (none.produced || none.sold || none.gifted) out.push(none);
     return out;
   },
   async years() {
-    const all = await Promise.all(['harvests', 'millings', 'sales', 'expenses'].map(async t => fetchAll(() => sb.from(t).select('date').order('id'))));
+    const all = await Promise.all(['harvests', 'millings', 'sales', 'expenses', 'gifts'].map(async t => fetchAll(() => sb.from(t).select('date').order('id'))));
     return [...new Set(all.flat().map(r => r.date.slice(0, 4)))];
   },
   async stats(year) {
-    const [h, m, s, e, groves, stock] = await Promise.all([
-      db.list('harvests', year), db.list('millings', year), db.list('sales', year), db.list('expenses', year), db.list('groves'), db.stock()]);
+    const [h, m, s, e, groves, stock, g] = await Promise.all([
+      db.list('harvests', year), db.list('millings', year), db.list('sales', year), db.list('expenses', year), db.list('groves'), db.stock(),
+      db.list('gifts', year)]);
     const salesTotal = s.reduce((a, r) => a + r.liters * r.price_per_l, 0);
     const byGroveMap = new Map();
     h.forEach(r => byGroveMap.set(r.grove_id, (byGroveMap.get(r.grove_id) || 0) + Number(r.kg)));
@@ -94,6 +97,7 @@ const db = {
     const expenses = { total: sum(e, 'amount') };
     return {
       harvest: { kg: sum(h, 'kg'), n: h.length }, milling, expenses, byGrove,
+      gifts: { l: sum(g, 'liters'), n: g.length },
       sales: { l: sum(s, 'liters'), total: salesTotal, unpaid: s.filter(r => !r.paid).reduce((a, r) => a + r.liters * r.price_per_l, 0) },
       stock: sum(stock, 'current'), stockRows: stock,
       yieldPct: milling.kg > 0 ? milling.kgOil / milling.kg * 100 : null,
@@ -189,6 +193,20 @@ const MODULES = {
       const u = rows.filter(r => !r.paid).reduce((a, r) => a + r.liters * r.price_per_l, 0);
       return `Prodano <b>${nf(sum(rows, 'liters'), 1)} L</b> · ukupno <b>${eur(t)}</b>${u ? ` · neplaćeno <b class="warn">${eur(u)}</b>` : ''}`; },
   },
+  gifts: {
+    title: 'Pokloni', icon: '🎁', singular: 'poklon',
+    fields: {
+      date: { label: 'Datum', type: 'date', required: true, default: today },
+      recipient: { label: 'Kome (primatelj)', type: 'text', required: true },
+      occasion: { label: 'Prilika / svrha', type: 'text', list: ['Poklon', 'Donacija', 'Obitelj', 'Uzorak / degustacija', 'Blagdani', 'Ostalo'] },
+      tank_id: { label: 'Iz spremnika', ...opt('tanks') },
+      product: { label: 'Pakiranje', type: 'text', placeholder: 'npr. 2 boce 0,5 L' },
+      liters: { label: 'Količina (L)', type: 'number', required: true },
+      notes: { label: 'Bilješke', type: 'textarea' },
+    },
+    columns: ['date', 'recipient', 'occasion', 'product', 'liters', 'tank_id'],
+    total: rows => `Poklonjeno: <b>${nf(sum(rows, 'liters'), 1)} L</b> u ${rows.length} ${rows.length === 1 ? 'poklonu' : 'poklona'}`,
+  },
   expenses: {
     title: 'Troškovi', icon: '🧾', singular: 'trošak',
     fields: {
@@ -208,10 +226,11 @@ const MODULES = {
       oil_type: { label: 'Vrsta ulja', type: 'text', list: ['Ekstra djevičansko', 'Djevičansko', 'Sortno', 'Mješavina'] },
       notes: { label: 'Bilješke', type: 'textarea' },
     },
-    columns: ['name', 'oil_type', 'capacity_l', 'produced', 'sold', 'current'],
+    columns: ['name', 'oil_type', 'capacity_l', 'produced', 'sold', 'gifted', 'current'],
     virtual: {
       produced: { label: 'Ulaz (L)', fmt: r => nf(r.produced, 1) },
       sold: { label: 'Prodano (L)', fmt: r => nf(r.sold, 1) },
+      gifted: { label: 'Poklonjeno (L)', fmt: r => nf(r.gifted, 1) },
       current: { label: 'Stanje (L)', fmt: r => `<b>${nf(r.current, 1)}</b>` + (r.capacity_l ? `<div class="bar"><i style="width:${Math.min(100, Math.max(0, r.current / r.capacity_l * 100))}%"></i></div>` : '') },
     },
     total: rows => `Ukupno na zalihi: <b>${nf(sum(rows, 'current'), 1)} L</b>`,
@@ -247,7 +266,7 @@ const sum = (rows, k) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
 
 const NAV = [
   ['dashboard', '📊', 'Pregled'], ['harvests'], ['millings'], ['tanks'], ['sales'],
-  ['expenses'], ['customers'], ['groves'], ['settings', '⚙', 'Postavke'],
+  ['gifts'], ['expenses'], ['customers'], ['groves'], ['settings', '⚙', 'Postavke'],
 ];
 
 // ---------- Prijava ----------
@@ -330,6 +349,7 @@ async function renderDashboard() {
       ${tile('Ulja na 100 kg maslina', s.litersPer100 == null ? '–' : nf(s.litersPer100, 1) + ' L', s.yieldPct == null ? 'nema prerade' : 'randman ' + nf(s.yieldPct, 1) + ' % (po kg)')}
       ${tile('Na zalihi', nf(s.stock, 1) + ' L', 'trenutno stanje, svi spremnici')}
       ${tile('Prodano', nf(s.sales.l, 1) + ' L', eur(s.sales.total))}
+      ${tile('Poklonjeno', nf(s.gifts.l, 1) + ' L', s.gifts.n + (s.gifts.n === 1 ? ' poklon' : ' poklona'))}
       ${tile('Neplaćeno', eur(s.sales.unpaid), 'potraživanja od kupaca')}
       ${tile('Troškovi', eur(s.expenses.total + s.milling.cost), 'uključujući preradu ' + eur(s.milling.cost))}
       ${tile('Dobit', eur(s.profit), 'prihod − troškovi')}
@@ -351,6 +371,7 @@ async function renderDashboard() {
       <a class="btn primary" href="#harvests" data-new>+ Nova berba</a>
       <a class="btn primary" href="#millings" data-new>+ Nova prerada</a>
       <a class="btn primary" href="#sales" data-new>+ Nova prodaja</a>
+      <a class="btn primary" href="#gifts" data-new>+ Novi poklon</a>
     </div>`;
   document.querySelectorAll('[data-new]').forEach(a => a.addEventListener('click', () => state.openNew = true));
 }
