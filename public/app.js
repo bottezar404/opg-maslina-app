@@ -191,9 +191,9 @@ const MODULES = {
         catch (err) { toast(err.message, true); }
       };
     },
-    virtual: { liters: { label: 'Ulje (L)', fmt: r => `<b>${lit(r.liters_oil)}</b>` }, yield: { label: 'Randman (kg)', fmt: r => r.kg_olives ? nf(r.kg_oil / r.kg_olives * 100, 1) + ' %' : '' } },
+    virtual: { liters: { label: 'Ulje (L)', fmt: r => `<b>${lit(r.liters_oil)}</b>` }, yield: { label: 'Randman (kg)', fmt: r => r.kg_olives ? nf(r.kg_oil / r.kg_olives * 100, 2) + ' %' : '' } },
     total: rows => { const kg = sum(rows, 'kg_olives'), l = sum(rows, 'liters_oil');
-      return `Ukupno: <b>${nf(kg)} kg</b> maslina → <b>${lit(l)} L</b> ulja (${nf(sum(rows, 'kg_oil'), 1)} kg)${kg ? ` · <b>${nf(l / kg * 100, 1)} L</b> na 100 kg maslina · randman ${nf(sum(rows, 'kg_oil') / kg * 100, 1)} %` : ''} · trošak prerade <b>${eur(sum(rows, 'cost'))}</b>` + byVariety(rows, 'liters_oil', v => lit(v) + ' L'); },
+      return `Ukupno: <b>${nf(kg)} kg</b> maslina → <b>${lit(l)} L</b> ulja (${nf(sum(rows, 'kg_oil'), 2)} kg)${kg ? ` · <b>${nf(l / kg * 100, 2)} L</b> na 100 kg maslina · randman ${nf(sum(rows, 'kg_oil') / kg * 100, 2)} %` : ''} · trošak prerade <b>${eur(sum(rows, 'cost'))}</b>` + byVariety(rows, 'liters_oil', v => lit(v) + ' L'); },
   },
   sales: {
     title: 'Prodaja', icon: '💶', singular: 'prodaju',
@@ -373,7 +373,7 @@ async function renderDashboard() {
     <div class="tiles">
       ${tile('Ubrano maslina', nf(s.harvest.kg) + ' kg', s.harvest.n + ' unosa berbe')}
       ${tile('Proizvedeno ulja', lit(s.milling.l) + ' L', 'od ' + nf(s.milling.kg) + ' kg maslina')}
-      ${tile('Ulja na 100 kg maslina', s.litersPer100 == null ? '–' : nf(s.litersPer100, 1) + ' L', s.yieldPct == null ? 'nema prerade' : 'randman ' + nf(s.yieldPct, 1) + ' % (po kg)')}
+      ${tile('Ulja na 100 kg maslina', s.litersPer100 == null ? '–' : nf(s.litersPer100, 2) + ' L', s.yieldPct == null ? 'nema prerade' : 'randman ' + nf(s.yieldPct, 2) + ' % (po kg)')}
       ${tile('Na zalihi', lit(s.stock) + ' L', 'trenutno stanje, svi spremnici')}
       ${tile('Prodano', lit(s.sales.l) + ' L', eur(s.sales.total))}
       ${tile('Poklonjeno', lit(s.gifts.l) + ' L', s.gifts.n + (s.gifts.n === 1 ? ' poklon' : ' poklona'))}
@@ -398,7 +398,7 @@ async function renderDashboard() {
       ${s.byVarietyRows.length ? `<div class="table-wrap"><table><thead><tr><th>Sorta</th><th class="r">Ubrano (kg)</th><th class="r">U preradi (kg)</th><th class="r">Ulje (L)</th><th class="r">Randman (kg)</th></tr></thead><tbody>
       ${s.byVarietyRows.map(v => `<tr class="static"><td data-label="Sorta"><b>${esc(v.name)}</b></td><td data-label="Ubrano (kg)" class="r">${nf(v.harvested)}</td>
         <td data-label="U preradi (kg)" class="r">${nf(v.milled)}</td><td data-label="Ulje (L)" class="r">${lit(v.l)}</td>
-        <td data-label="Randman (kg)" class="r">${v.milled ? nf(v.kgOil / v.milled * 100, 1) + ' %' : '–'}</td></tr>`).join('')}
+        <td data-label="Randman (kg)" class="r">${v.milled ? nf(v.kgOil / v.milled * 100, 2) + ' %' : '–'}</td></tr>`).join('')}
       </tbody></table></div>` : '<p class="muted">Nema podataka o berbi ni preradi.</p>'}
     </div>
     <div class="quick">
