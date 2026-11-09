@@ -3,6 +3,7 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nf = (v, d = 0) => v == null || v === '' ? '' : Number(v).toLocaleString('hr-HR', { minimumFractionDigits: d, maximumFractionDigits: d });
 const eur = v => nf(v, 2) + ' €';
+const lit = v => nf(v, 2); // litre uvijek na dvije decimale (npr. boce 0,75 L)
 const fdate = v => v ? v.split('-').reverse().join('.') + '.' : '';
 const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 // Broj iz polja: prihvaća "1300", "1.300", "183,2", "1.300,5", "1 300"
@@ -136,7 +137,7 @@ const MODULES = {
       mill: { label: 'Uljara', type: 'text' },
       kg_olives: { label: 'Masline (kg)', type: 'number', required: true },
       kg_oil: { label: 'Dobiveno ulje (kg)', type: 'number', required: true,
-        hint: v => v > 0 ? `= <b>${nf(kgToL(v), 1)} L</b> ulja (gustoća ${nf(OIL_DENSITY, 3)} kg/L)` : `Litre se izračunaju automatski (1 L ≈ ${nf(OIL_DENSITY, 3)} kg)` },
+        hint: v => v > 0 ? `= <b>${lit(kgToL(v))} L</b> ulja (gustoća ${nf(OIL_DENSITY, 3)} kg/L)` : `Litre se izračunaju automatski (1 L ≈ ${nf(OIL_DENSITY, 3)} kg)` },
       cost: { label: 'Trošak prerade (€)', type: 'number',
         hint: () => state.millPrice ? `Automatski: kg maslina × ${nf(state.millPrice, 2)} €/kg (može se promijeniti)` : 'Cijenu po kg upišite na vrhu stranice Prerada' },
       tank_id: { label: 'Spremnik', ...opt('tanks') },
@@ -171,9 +172,9 @@ const MODULES = {
         catch (err) { toast(err.message, true); }
       };
     },
-    virtual: { liters: { label: 'Ulje (L)', fmt: r => `<b>${nf(r.liters_oil, 1)}</b>` }, yield: { label: 'Randman (kg)', fmt: r => r.kg_olives ? nf(r.kg_oil / r.kg_olives * 100, 1) + ' %' : '' } },
+    virtual: { liters: { label: 'Ulje (L)', fmt: r => `<b>${lit(r.liters_oil)}</b>` }, yield: { label: 'Randman (kg)', fmt: r => r.kg_olives ? nf(r.kg_oil / r.kg_olives * 100, 1) + ' %' : '' } },
     total: rows => { const kg = sum(rows, 'kg_olives'), l = sum(rows, 'liters_oil');
-      return `Ukupno: <b>${nf(kg)} kg</b> maslina → <b>${nf(l, 1)} L</b> ulja (${nf(sum(rows, 'kg_oil'), 1)} kg)${kg ? ` · <b>${nf(l / kg * 100, 1)} L</b> na 100 kg maslina · randman ${nf(sum(rows, 'kg_oil') / kg * 100, 1)} %` : ''} · trošak prerade <b>${eur(sum(rows, 'cost'))}</b>`; },
+      return `Ukupno: <b>${nf(kg)} kg</b> maslina → <b>${lit(l)} L</b> ulja (${nf(sum(rows, 'kg_oil'), 1)} kg)${kg ? ` · <b>${nf(l / kg * 100, 1)} L</b> na 100 kg maslina · randman ${nf(sum(rows, 'kg_oil') / kg * 100, 1)} %` : ''} · trošak prerade <b>${eur(sum(rows, 'cost'))}</b>`; },
   },
   sales: {
     title: 'Prodaja', icon: '💶', singular: 'prodaju',
@@ -191,7 +192,7 @@ const MODULES = {
     virtual: { amount: { label: 'Iznos', fmt: r => eur(r.liters * r.price_per_l) } },
     total: rows => { const t = rows.reduce((a, r) => a + r.liters * r.price_per_l, 0);
       const u = rows.filter(r => !r.paid).reduce((a, r) => a + r.liters * r.price_per_l, 0);
-      return `Prodano <b>${nf(sum(rows, 'liters'), 1)} L</b> · ukupno <b>${eur(t)}</b>${u ? ` · neplaćeno <b class="warn">${eur(u)}</b>` : ''}`; },
+      return `Prodano <b>${lit(sum(rows, 'liters'))} L</b> · ukupno <b>${eur(t)}</b>${u ? ` · neplaćeno <b class="warn">${eur(u)}</b>` : ''}`; },
   },
   gifts: {
     title: 'Pokloni', icon: '🎁', singular: 'poklon',
@@ -205,7 +206,7 @@ const MODULES = {
       notes: { label: 'Bilješke', type: 'textarea' },
     },
     columns: ['date', 'recipient', 'occasion', 'product', 'liters', 'tank_id'],
-    total: rows => `Poklonjeno: <b>${nf(sum(rows, 'liters'), 1)} L</b> u ${rows.length} ${rows.length === 1 ? 'poklonu' : 'poklona'}`,
+    total: rows => `Poklonjeno: <b>${lit(sum(rows, 'liters'))} L</b> u ${rows.length} ${rows.length === 1 ? 'poklonu' : 'poklona'}`,
   },
   expenses: {
     title: 'Troškovi', icon: '🧾', singular: 'trošak',
@@ -228,10 +229,10 @@ const MODULES = {
     },
     columns: ['name', 'oil_type', 'capacity_l', 'produced', 'sold', 'gifted', 'current'],
     virtual: {
-      produced: { label: 'Ulaz (L)', fmt: r => nf(r.produced, 1) },
-      sold: { label: 'Prodano (L)', fmt: r => nf(r.sold, 1) },
-      gifted: { label: 'Poklonjeno (L)', fmt: r => nf(r.gifted, 1) },
-      current: { label: 'Stanje (L)', fmt: r => `<b>${nf(r.current, 1)}</b>` + (r.capacity_l ? `<div class="bar"><i style="width:${Math.min(100, Math.max(0, r.current / r.capacity_l * 100))}%"></i></div>` : '') },
+      produced: { label: 'Ulaz (L)', fmt: r => lit(r.produced) },
+      sold: { label: 'Prodano (L)', fmt: r => lit(r.sold) },
+      gifted: { label: 'Poklonjeno (L)', fmt: r => lit(r.gifted) },
+      current: { label: 'Stanje (L)', fmt: r => `<b>${lit(r.current)}</b>` + (r.capacity_l ? `<div class="bar"><i style="width:${Math.min(100, Math.max(0, r.current / r.capacity_l * 100))}%"></i></div>` : '') },
     },
     total: rows => `Ukupno na zalihi: <b>${nf(sum(rows, 'current'), 1)} L</b>`,
   },
@@ -345,11 +346,11 @@ async function renderDashboard() {
     <h2>Pregled ${state.year ? 'za ' + state.year + '.' : '(sve godine)'}</h2>
     <div class="tiles">
       ${tile('Ubrano maslina', nf(s.harvest.kg) + ' kg', s.harvest.n + ' unosa berbe')}
-      ${tile('Proizvedeno ulja', nf(s.milling.l, 1) + ' L', 'od ' + nf(s.milling.kg) + ' kg maslina')}
+      ${tile('Proizvedeno ulja', lit(s.milling.l) + ' L', 'od ' + nf(s.milling.kg) + ' kg maslina')}
       ${tile('Ulja na 100 kg maslina', s.litersPer100 == null ? '–' : nf(s.litersPer100, 1) + ' L', s.yieldPct == null ? 'nema prerade' : 'randman ' + nf(s.yieldPct, 1) + ' % (po kg)')}
-      ${tile('Na zalihi', nf(s.stock, 1) + ' L', 'trenutno stanje, svi spremnici')}
-      ${tile('Prodano', nf(s.sales.l, 1) + ' L', eur(s.sales.total))}
-      ${tile('Poklonjeno', nf(s.gifts.l, 1) + ' L', s.gifts.n + (s.gifts.n === 1 ? ' poklon' : ' poklona'))}
+      ${tile('Na zalihi', lit(s.stock) + ' L', 'trenutno stanje, svi spremnici')}
+      ${tile('Prodano', lit(s.sales.l) + ' L', eur(s.sales.total))}
+      ${tile('Poklonjeno', lit(s.gifts.l) + ' L', s.gifts.n + (s.gifts.n === 1 ? ' poklon' : ' poklona'))}
       ${tile('Neplaćeno', eur(s.sales.unpaid), 'potraživanja od kupaca')}
       ${tile('Troškovi', eur(s.expenses.total + s.milling.cost), 'uključujući preradu ' + eur(s.milling.cost))}
       ${tile('Dobit', eur(s.profit), 'prihod − troškovi')}
@@ -362,7 +363,7 @@ async function renderDashboard() {
       </div>
       <div class="card"><h3>Stanje spremnika</h3>
         ${stock.length ? stock.map(t => `<div class="tank"><div><b>${esc(t.name)}</b> <small class="muted">${esc(t.oil_type || '')}</small></div>
-          <div>${nf(t.current, 1)} L${t.capacity_l ? ' / ' + nf(t.capacity_l) + ' L' : ''}</div>
+          <div>${lit(t.current)} L${t.capacity_l ? ' / ' + nf(t.capacity_l) + ' L' : ''}</div>
           ${t.capacity_l ? `<div class="bar"><i style="width:${Math.min(100, Math.max(0, t.current / t.capacity_l * 100))}%"></i></div>` : ''}</div>`).join('')
         : '<p class="muted">Dodajte spremnike u modulu Skladište.</p>'}
       </div>
@@ -388,6 +389,7 @@ function cell(mod, key, row) {
   if (f.source) return esc((state.cache[f.source] || []).find(x => x.id === v)?.[f.display] || '');
   if (f.type === 'date') return fdate(v);
   if (f.type === 'checkbox') return v ? '<span class="ok">✔</span>' : '<span class="warn">✘</span>';
+  if (key === 'liters') return lit(v);
   if (f.type === 'number') return nf(v, f.step === 1 ? 0 : (Number.isInteger(v) ? 0 : 2));
   return esc(v);
 }
