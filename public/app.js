@@ -502,7 +502,15 @@ async function renderSettings() {
 }
 
 // ---------- Start ----------
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => {});
+  // Kad se instalira nova verzija aplikacije, automatski osvježi stranicu
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloaded || !navigator.serviceWorker.controller) return;
+    reloaded = true; location.reload();
+  });
+}
 if (!configured) {
   document.body.innerHTML = `<div class="login"><div class="card login-card"><h1>🫒 OPG Maslina</h1>
     <p>Aplikacija još nije povezana sa Supabaseom.</p>
