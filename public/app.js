@@ -354,6 +354,19 @@ async function refreshYears() {
 }
 $('#year-select').addEventListener('change', e => { state.year = e.target.value; route(); });
 $('#menu-btn').addEventListener('click', () => $('#nav').classList.toggle('open'));
+
+// ---------- Tema (svijetla / tamna) ----------
+const THEMES = { auto: 'Automatski (prema uređaju)', light: '☀️ Svijetla', dark: '🌙 Tamna' };
+function updateThemeBtn() {
+  const b = $('#theme-btn');
+  b.textContent = window.opgTheme.isDark() ? '☀️' : '🌙';
+  b.title = window.opgTheme.isDark() ? 'Prebaci na svijetlu temu' : 'Prebaci na tamnu temu';
+  document.querySelectorAll('[data-theme-opt]').forEach(x => x.classList.toggle('active', x.dataset.themeOpt === window.opgTheme.get()));
+}
+function setTheme(t) { window.opgTheme.set(t); updateThemeBtn(); }
+$('#theme-btn').addEventListener('click', () => setTheme(window.opgTheme.isDark() ? 'light' : 'dark'));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => setTimeout(updateThemeBtn));
+updateThemeBtn();
 window.addEventListener('hashchange', route);
 
 function route() {
@@ -544,6 +557,9 @@ async function renderSettings() {
       <label>Nova lozinka (min. 8 znakova)<input type="password" name="next" minlength="8" required autocomplete="new-password"></label>
       <label>Ponovite novu lozinku<input type="password" name="again" minlength="8" required autocomplete="new-password"></label>
       <button class="btn primary">Promijeni lozinku</button></form>
+    <hr><h3>Tema</h3>
+    <div class="segmented">${Object.entries(THEMES).map(([k, v]) => `<button type="button" class="btn" data-theme-opt="${k}">${v}</button>`).join('')}</div>
+    <p class="muted">Izbor se pamti na ovom uređaju. "Automatski" prati svijetli ili tamni način rada mobitela odnosno računala.</p>
     <hr><h3>Članovi OPG-a</h3>
     <ul>${state.members.map(m => `<li>${esc(m.name || '')} <span class="muted">${esc(m.email)}</span></li>`).join('')}</ul>
     <p class="muted">Novog člana dodajte u Supabaseu: <i>Authentication → Users → Add user</i>, zatim njegov e-mail upišite u tablicu <code>members</code> (vidi README).</p>
@@ -556,6 +572,8 @@ async function renderSettings() {
     catch (err) { toast(err.message, true); }
   };
   $('#logout').onclick = logout;
+  document.querySelectorAll('[data-theme-opt]').forEach(b => b.onclick = () => setTheme(b.dataset.themeOpt));
+  updateThemeBtn();
 }
 
 // ---------- Start ----------
